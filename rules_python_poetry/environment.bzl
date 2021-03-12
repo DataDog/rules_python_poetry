@@ -9,17 +9,26 @@ def _symlink_venv(repository_ctx):
     repository_ctx.symlink(repository_ctx.path(str(project_dir) + "/.venv"), repository_ctx.path(".venv"))
 
 def _symlink_project_files(repository_ctx):
+    raw = repository_ctx.path("pyproject.toml.original")
     repository_ctx.symlink(
         repository_ctx.attr.project,
-        repository_ctx.path("pyproject.toml")
+        raw,
+    )
+    res = repository_ctx.execute(
+        ["sed", "/path =/d", raw],
+    )
+    output = repository_ctx.path("pyproject.toml")
+    repository_ctx.file(
+        output,
+        content = res.stdout,
     )
     repository_ctx.symlink(
         repository_ctx.attr.lock,
-        repository_ctx.path("poetry.lock")
+        repository_ctx.path("poetry.lock"),
     )
     repository_ctx.symlink(
         repository_ctx.attr.config,
-        repository_ctx.path("poetry.toml")
+        repository_ctx.path("poetry.toml"),
     )
 
 def _render_templates(repository_ctx):
@@ -30,21 +39,21 @@ def _render_templates(repository_ctx):
         "BUILD",
         Label("@rules_python_poetry//:BUILD.template"),
         substitutions = {
-            "{venv}": venv_path
+            "{venv}": venv_path,
         },
     )
     repository_ctx.template(
         "export.bzl",
         Label("@rules_python_poetry//:export.bzl.template"),
         substitutions = {
-            "{poetry}": environment_path
+            "{poetry}": environment_path,
         },
     )
     repository_ctx.template(
         "runtime.bzl",
         Label("@rules_python_poetry//:runtime.bzl.template"),
         substitutions = {
-            "{venv}": venv_path
+            "{venv}": venv_path,
         },
     )
 
@@ -52,7 +61,7 @@ def _poetry_environment_impl(repository_ctx):
     managed_root = repository_ctx.path(repository_ctx.attr.project).dirname
     repository_ctx.execute(
         ["poetry", "install"],
-        working_directory=str(managed_root)
+        working_directory = str(managed_root),
     )
 
     _symlink_venv(repository_ctx)
@@ -75,7 +84,7 @@ poetry_environment = repository_rule(
             mandatory = True,
             allow_single_file = True,
             doc = "The label of the poetry.toml config file.",
-        )
+        ),
     },
-    implementation = _poetry_environment_impl
+    implementation = _poetry_environment_impl,
 )
