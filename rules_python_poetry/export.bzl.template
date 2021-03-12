@@ -4,14 +4,18 @@ def _poetry_export_impl(repository_ctx):
         [
             "poetry",
             "export",
-            "-f", "requirements.txt",
+            "-f",
+            "requirements.txt",
             "-o",
-            repository_ctx.path("requirements.txt")
-        ], 
-        quiet=False,
-        working_directory="{poetry}"
+            repository_ctx.path("requirements.txt"),
+        ] + ["--without-hashes"] if repository_ctx.attr.without_hashes else [],
+        quiet = False,
+        working_directory = "{poetry}",
     )
 
 poetry_export = repository_rule(
-    implementation = _poetry_export_impl
+    implementation = _poetry_export_impl,
+    attrs = {
+        "without_hashes": attr.bool(default = False),
+    },
 )
