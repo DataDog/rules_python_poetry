@@ -1,12 +1,8 @@
 """
 Poetry Environment Repository
 
-Designed to manage the virtual environment using Poetry and export a further repository to interact with it.
+Simply exports requirement.txt files based on poetry lock files.
 """
-
-def _symlink_venv(repository_ctx):
-    project_dir = repository_ctx.path(repository_ctx.attr.project).dirname
-    repository_ctx.symlink(repository_ctx.path(str(project_dir) + "/.venv"), repository_ctx.path(".venv"))
 
 def _symlink_project_files(repository_ctx):
     raw = repository_ctx.path("pyproject.toml.original")
@@ -14,6 +10,8 @@ def _symlink_project_files(repository_ctx):
         repository_ctx.attr.project,
         raw,
     )
+
+    # Strip local deps. These need special import rules in your bazel files.
     res = repository_ctx.execute(
         ["sed", "/path =/d", raw],
     )
@@ -26,47 +24,29 @@ def _symlink_project_files(repository_ctx):
         repository_ctx.attr.lock,
         repository_ctx.path("poetry.lock"),
     )
-    repository_ctx.symlink(
-        repository_ctx.attr.config,
-        repository_ctx.path("poetry.toml"),
+
+def _run_export(repository_ctx, output, without_hashes = False, dev = False):
+    repository_ctx.execute(
+        [
+            "poetry",
+            "export",
+            "-f",
+            "requirements.txt",
+            "-o",
+            repository_ctx.path(output),
+        ] + (["--without-hashes"] if without_hashes else []) + (["--dev"] if dev else []),
+        quiet = False,
     )
 
-def _render_templates(repository_ctx):
-    environment_path = str(repository_ctx.path(".venv").dirname)
-    venv_path = str(repository_ctx.path(".venv"))
-
-    repository_ctx.template(
-        "BUILD",
-        Label("@rules_python_poetry//:BUILD.template"),
-        substitutions = {
-            "{venv}": venv_path,
-        },
-    )
-    repository_ctx.template(
-        "export.bzl",
-        Label("@rules_python_poetry//:export.bzl.template"),
-        substitutions = {
-            "{poetry}": environment_path,
-        },
-    )
-    repository_ctx.template(
-        "runtime.bzl",
-        Label("@rules_python_poetry//:runtime.bzl.template"),
-        substitutions = {
-            "{venv}": venv_path,
-        },
-    )
+def _export_requirements(repository_ctx):
+    without_hashes = repository_ctx.attr.without_hashes
+    _run_export(repository_ctx, "requirements.txt", without_hashes)
+    _run_export(repository_ctx, "requirements-dev.txt", without_hashes, True)
 
 def _poetry_environment_impl(repository_ctx):
-    managed_root = repository_ctx.path(repository_ctx.attr.project).dirname
-    repository_ctx.execute(
-        ["poetry", "install"],
-        working_directory = str(managed_root),
-    )
-
-    _symlink_venv(repository_ctx)
+    repository_ctx.file("BUILD")
     _symlink_project_files(repository_ctx)
-    _render_templates(repository_ctx)
+    _export_requirements(repository_ctx)
 
 poetry_environment = repository_rule(
     attrs = {
@@ -80,10 +60,10 @@ poetry_environment = repository_rule(
             allow_single_file = True,
             doc = "The label of the poetry.lock file.",
         ),
-        "config": attr.label(
-            mandatory = True,
-            allow_single_file = True,
-            doc = "The label of the poetry.toml config file.",
+        "without_hashes": attr.bool(
+            mandatory = False,
+            default = False,
+            doc = "Whether hashes should be skipped in the rendered requirements",
         ),
     },
     implementation = _poetry_environment_impl,
